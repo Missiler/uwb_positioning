@@ -14,7 +14,6 @@ setup(
             'launch/mapping.launch.py',
         ]),
         ('share/' + package_name + '/config', [
-            'config/slam.yaml',
         ]),
     ],
     install_requires=['setuptools', 'pyserial'],
