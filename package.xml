@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>uwb_ro_bridge</name>
+  <name>uwb_positioning</name>
   <version>0.1.0</version>
   <description>Read-only UWB bridge for DWM1001 CSV -> ROS 2 topics.</description>
   <maintainer email="albin@example.com">albin</maintainer>
