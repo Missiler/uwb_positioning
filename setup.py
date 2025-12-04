@@ -27,7 +27,7 @@ setup(
         'console_scripts': [
             'uwb_read_only_node = uwb_positioning.reader:main',
             'uwb_read_only_node_launch = uwb_positioning.runner:main',
-            'uwb_odom_broadcaster = uwb_positioning.uwb_publisher:main',
+            'uwb_publisher = uwb_positioning.uwb_publisher:main',
         ],
     },
 )
