@@ -10,8 +10,8 @@ setup(
         ('share/ament_index/resource_index/packages', ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
         ('share/' + package_name + '/launch', [
-            'launch/uwb_positioning.launch.py',
-            'launch/mappingg.launch.py',
+            'launch/uwb_bridge.launch.py',
+            'launch/mapping.launch.py',
         ]),
         ('share/' + package_name + '/config', [
             'config/slam.yaml',
