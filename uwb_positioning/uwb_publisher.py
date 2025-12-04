@@ -1,20 +1,19 @@
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import TransformStamped
-from nav_msgs.msg import Odometry
+from geometry_msgs.msg import TransformStamped, PoseStamped
 import tf2_ros
 
 class UwbOdomBroadcaster(Node):
     def __init__(self):
         super().__init__('uwb_odom_broadcaster')
 
-        self.latest_odom = None
+        self.latest_pose = None
 
-        # Subscribe to /uwb/odom
+        # Subscribe to /uwb/pose  (PoseStamped)
         self.subscription = self.create_subscription(
-            Odometry,
-            '/uwb/odom',
-            self.odom_callback,
+            PoseStamped,
+            '/uwb/pose',
+            self.pose_callback,
             10
         )
 
@@ -24,13 +23,12 @@ class UwbOdomBroadcaster(Node):
         # Publish TF at 50 Hz
         self.timer = self.create_timer(0.02, self.publish_tf)
 
-    def odom_callback(self, msg):
-        self.latest_odom = msg
+    def pose_callback(self, msg):
+        self.latest_pose = msg
 
     def publish_tf(self):
-        if self.latest_odom is None:
+        if self.latest_pose is None:
             return
-
 
         # Use ROS time to keep scan and TF timestamps aligned
         now = self.get_clock().now().to_msg()
@@ -40,13 +38,16 @@ class UwbOdomBroadcaster(Node):
         t.header.frame_id = "odom"
         t.child_frame_id = "base_link"
 
-        t.transform.translation.x = self.latest_odom.pose.pose.position.x
-        t.transform.translation.y = self.latest_odom.pose.pose.position.y
-        t.transform.translation.z = self.latest_odom.pose.pose.position.z
+        # Position from PoseStamped.pose
+        t.transform.translation.x = self.latest_pose.pose.position.x
+        t.transform.translation.y = self.latest_pose.pose.position.y
+        t.transform.translation.z = self.latest_pose.pose.position.z
 
-        t.transform.rotation = self.latest_odom.pose.pose.orientation
+        # Orientation from PoseStamped.pose
+        t.transform.rotation = self.latest_pose.pose.orientation
 
         self.tf_broadcaster.sendTransform(t)
+
 
 def main():
     rclpy.init()
@@ -55,6 +56,6 @@ def main():
     node.destroy_node()
     rclpy.shutdown()
 
+
 if __name__ == '__main__':
     main()
-
