@@ -57,9 +57,9 @@ def generate_launch_description():
     uwb_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             PathJoinSubstitution([
-                FindPackageShare('uwb_ro_bridge'),
+                FindPackageShare('uwb_positioning'),
                 'launch',
-                'uwb_ro_bridge.launch.py'
+                'uwb_bridge.launch.py'
             ])
         ),
         launch_arguments={
@@ -71,10 +71,10 @@ def generate_launch_description():
     )
 
     # ----- UWB -> TF broadcaster (your Terminal C) -----
-    uwb_odom_broadcaster_node = Node(
-        package='uwb_ro_bridge',
-        executable='uwb_odom_broadcaster',
-        name='uwb_odom_broadcaster',
+    uwb_publisher_node = Node(
+        package='uwb_positioning',
+        executable='uwb_publisher',
+        name='uwb_publisher',
         output='screen'
     )
 
@@ -85,6 +85,6 @@ def generate_launch_description():
         uwb_baud_arg,
         lidar_launch,
         uwb_launch,
-        uwb_odom_broadcaster_node,
+        uwb_publisher_node,
     ])
 
