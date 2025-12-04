@@ -21,7 +21,7 @@ def generate_launch_description():
         # Your read-only node (wrapper strips bare --ros-args)
         Node(
             package='uwb_positioning',
-            executable='uwb_read_only_node_launch',
+            executable='uwb_read_only_node',
             output='screen',
             arguments=[
                 '--port', port,
