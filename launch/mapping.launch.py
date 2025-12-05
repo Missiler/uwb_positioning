@@ -77,6 +77,13 @@ def generate_launch_description():
         name='uwb_publisher',
         output='screen'
     )
+    
+    imu_publisher_node = Node(
+        package='uwb_positioning',
+        executable='imu_publish',
+        name='imu_publisher',
+        output='screen'
+    )
 
     return LaunchDescription([
         lidar_port_arg,
@@ -86,5 +93,6 @@ def generate_launch_description():
         lidar_launch,
         uwb_launch,
         uwb_publisher_node,
+        imu_publisher_node,
     ])
 

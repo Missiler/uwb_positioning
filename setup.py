@@ -27,6 +27,8 @@ setup(
             'uwb_read_only_node = uwb_positioning.reader:main',
             'uwb_read_only_node_launch = uwb_positioning.runner:main',
             'uwb_publisher = uwb_positioning.uwb_publisher:main',
+            'imu_gather = uwb_positioning.imu_gather_data:main',
+            'imu_publish = uwb_positioning.imu_publish_data:main'
         ],
     },
 )
