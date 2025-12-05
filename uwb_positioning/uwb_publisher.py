@@ -43,9 +43,6 @@ class UwbOdomBroadcaster(Node):
         t.transform.translation.y = self.latest_pose.pose.position.y
         t.transform.translation.z = self.latest_pose.pose.position.z
 
-        # Orientation from PoseStamped.pose
-        t.transform.rotation = self.latest_pose.pose.orientation
-
         self.tf_broadcaster.sendTransform(t)
 
 
