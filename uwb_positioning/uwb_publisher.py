@@ -77,7 +77,7 @@ class UwbOdomBroadcaster(Node):
         # Broadcast TF for base_link (car body with IMU rotation)
         self.tf_broadcaster.sendTransform(t)
 
-        # Build LiDAR transform (world-fixed in odom frame, rotated 90 degrees about Z)
+        # Build LiDAR transform (world-fixed in odom frame, no rotation)
         t_laser = TransformStamped()
         t_laser.header.stamp = now_msg
         t_laser.header.frame_id = self.odom_frame
@@ -85,11 +85,11 @@ class UwbOdomBroadcaster(Node):
         t_laser.transform.translation.x = px
         t_laser.transform.translation.y = py
         t_laser.transform.translation.z = pz
-        # 90-degree rotation about Z-axis (quaternion for pi/2 rotation)
+        # No rotation: keep LiDAR scan fixed in world frame
         t_laser.transform.rotation.x = 0.0
         t_laser.transform.rotation.y = 0.0
-        t_laser.transform.rotation.z = math.sin(math.pi / 4.0)  # ~0.707
-        t_laser.transform.rotation.w = math.cos(math.pi / 4.0)  # ~0.707
+        t_laser.transform.rotation.z = 0.0
+        t_laser.transform.rotation.w = 1.0
         self.tf_broadcaster.sendTransform(t_laser)
 
         # Publish nav_msgs/Odometry
