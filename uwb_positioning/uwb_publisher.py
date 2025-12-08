@@ -88,23 +88,22 @@ class UwbOdomBroadcaster(Node):
         t_laser.transform.translation.z = pz
         
         if self.latest_imu is not None:
-            # Apply inverse (conjugate) of IMU orientation plus 90-degree Z rotation
+            # Apply the same IMU orientation plus 90-degree Z rotation to counteract physical rotation
             imu_quat = self.latest_imu.orientation
-            # Conjugate: (x, y, z, w) -> (-x, -y, -z, w)
-            imu_inv_x = -imu_quat.x
-            imu_inv_y = -imu_quat.y
-            imu_inv_z = -imu_quat.z
-            imu_inv_w = imu_quat.w
+            imu_x = imu_quat.x
+            imu_y = imu_quat.y
+            imu_z = imu_quat.z
+            imu_w = imu_quat.w
             
-            # Compose with 90-degree Z rotation: quat_result = q_inv * q_90z
+            # Compose with 90-degree Z rotation: quat_result = q_imu * q_90z
             # q_90z = (0, 0, sin(pi/4), cos(pi/4)) = (0, 0, ~0.707, ~0.707)
             q90_x, q90_y, q90_z, q90_w = 0.0, 0.0, math.sin(math.pi / 4.0), math.cos(math.pi / 4.0)
             
             # Quaternion multiplication: q1 * q2
-            t_laser.transform.rotation.x = imu_inv_w * q90_x + imu_inv_x * q90_w + imu_inv_y * q90_z - imu_inv_z * q90_y
-            t_laser.transform.rotation.y = imu_inv_w * q90_y - imu_inv_x * q90_z + imu_inv_y * q90_w + imu_inv_z * q90_x
-            t_laser.transform.rotation.z = imu_inv_w * q90_z + imu_inv_x * q90_y - imu_inv_y * q90_x + imu_inv_z * q90_w
-            t_laser.transform.rotation.w = imu_inv_w * q90_w - imu_inv_x * q90_x - imu_inv_y * q90_y - imu_inv_z * q90_z
+            t_laser.transform.rotation.x = imu_w * q90_x + imu_x * q90_w + imu_y * q90_z - imu_z * q90_y
+            t_laser.transform.rotation.y = imu_w * q90_y - imu_x * q90_z + imu_y * q90_w + imu_z * q90_x
+            t_laser.transform.rotation.z = imu_w * q90_z + imu_x * q90_y - imu_y * q90_x + imu_z * q90_w
+            t_laser.transform.rotation.w = imu_w * q90_w - imu_x * q90_x - imu_y * q90_y - imu_z * q90_z
         else:
             # No IMU: just apply 90-degree Z rotation
             t_laser.transform.rotation.x = 0.0
