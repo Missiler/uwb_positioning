@@ -264,6 +264,26 @@ class MPUNode(Node):
         self.prev_time = time.time()
         self.yaw = 0.0
 
+        # Gyro bias estimation and filtering
+        self.bias_z = 0.0          # estimated gyro Z bias (deg/s)
+        self.bias_count = 0        # samples used during initial calibration
+        self.calib_start = time.time()
+        self.calib_duration = 2.0  # seconds to collect initial bias
+
+        # Low-pass filter for gyro rate to reduce noise before integration
+        self.gz_filtered = 0.0
+        self.rate_alpha = 0.1      # LPF alpha for gyro rate (0..1)
+
+        # Slow bias adaptation after initial calibration
+        self.bias_alpha = 0.001
+
+        # Optional smoothing on integrated yaw to avoid jitter
+        self.yaw_filtered = 0.0
+        self.yaw_alpha = 0.05
+
+        # reduce log spam
+        self._log_counter = 0
+
         # publish at 100 Hz
         timer_period = 0.01
         self.timer = self.create_timer(timer_period, self.publish_imu_data)
@@ -277,13 +297,34 @@ class MPUNode(Node):
         self.prev_time = now
 
         # Gyro comes in deg/s --> convert to rad/s
-        gz_rad = gyro['z'] * math.pi/180.0
 
-        # Integrate Z-axis angle
+        gz_deg = gyro['z']
+
+        # Initial calibration: collect bias samples for first `calib_duration` seconds
+        if (now - self.calib_start) <= self.calib_duration:
+            # incremental average
+            self.bias_z = (self.bias_z * self.bias_count + gz_deg) / (self.bias_count + 1)
+            self.bias_count += 1
+            # use raw value minus running bias (will be small during calibration)
+            gz_corrected_deg = gz_deg - self.bias_z
+        else:
+            # low-pass filter the raw gyro rate to reduce high-frequency noise
+            self.gz_filtered = (1.0 - self.rate_alpha) * self.gz_filtered + self.rate_alpha * gz_deg
+            # slowly adapt estimated bias using the filtered rate
+            self.bias_z = (1.0 - self.bias_alpha) * self.bias_z + self.bias_alpha * self.gz_filtered
+            gz_corrected_deg = self.gz_filtered - self.bias_z
+
+        # convert to rad/s
+        gz_rad = gz_corrected_deg * math.pi/180.0
+
+        # Integrate Z-axis angle (using corrected, filtered rate)
         self.yaw += gz_rad * dt
 
-        # Build quaternion from yaw only
-        qx, qy, qz, qw = self.quaternion_from_yaw(self.yaw)
+        # Smooth the integrated yaw to reduce jitter while keeping responsiveness
+        self.yaw_filtered = (1.0 - self.yaw_alpha) * self.yaw_filtered + self.yaw_alpha * self.yaw
+
+        # Build quaternion from filtered yaw only
+        qx, qy, qz, qw = self.quaternion_from_yaw(self.yaw_filtered)
 
         msg = Imu()
 
@@ -298,6 +339,7 @@ class MPUNode(Node):
         msg.orientation.w = qw
 
         # Angular velocity (rad/s)
+        # publish the corrected angular velocity (rad/s)
         msg.angular_velocity.z = gz_rad
         msg.angular_velocity.x = 0.0
         msg.angular_velocity.y = 0.0
@@ -313,7 +355,13 @@ class MPUNode(Node):
         msg.linear_acceleration_covariance[0] = 0.1
 
         self.publisher.publish(msg)
-        self.get_logger().info(f"Yaw = {self.yaw:.2f} rad")
+
+        # Log at a reduced rate
+        self._log_counter += 1
+        if self._log_counter % 10 == 0:
+            self.get_logger().info(
+                f"Yaw = {self.yaw_filtered:.3f} rad, bias_z={self.bias_z:.3f} deg/s"
+            )
 
     def quaternion_from_yaw(self, yaw):
         """
