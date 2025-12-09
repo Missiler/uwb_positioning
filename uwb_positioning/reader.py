@@ -48,6 +48,12 @@ class UWBReadOnly(Node):
 
         self.buf = bytearray()
 
+        # Position low-pass filter to smooth UWB noise
+        self.pos_alpha = 0.15  # Filter strength (0..1): higher = faster response, less smoothing
+        self.filtered_x = None
+        self.filtered_y = None
+        self.filtered_z = None
+
         self.get_logger().info(f"Opened {port} @ {baud}; read_only mode (CRLF={self.read_crlf})")
 
         # Timer loop (fast)
@@ -99,11 +105,21 @@ class UWBReadOnly(Node):
             except Exception:
                 return
 
+            # Apply low-pass filter to smooth position
+            if self.filtered_x is None:
+                self.filtered_x = x
+                self.filtered_y = y
+                self.filtered_z = z
+            else:
+                self.filtered_x = (1.0 - self.pos_alpha) * self.filtered_x + self.pos_alpha * x
+                self.filtered_y = (1.0 - self.pos_alpha) * self.filtered_y + self.pos_alpha * y
+                self.filtered_z = (1.0 - self.pos_alpha) * self.filtered_z + self.pos_alpha * z
+
             msg = PoseStamped()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = self.frame_id
-            msg.pose.position.x = x
-            msg.pose.position.y = y
+            msg.pose.position.x = self.filtered_x
+            msg.pose.position.y = self.filtered_y
             msg.pose.position.z = 0.0
             msg.pose.orientation.w = 1.0
             self.pub_pose.publish(msg)
