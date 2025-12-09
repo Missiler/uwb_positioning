@@ -49,7 +49,7 @@ class UWBReadOnly(Node):
         self.buf = bytearray()
 
         # Position low-pass filter to smooth UWB noise
-        self.pos_alpha = 0.10  # Filter strength (0..1): higher = faster response, less smoothing
+        self.pos_alpha = 0.20  # Filter strength (0..1): higher = faster response, less smoothing
         self.filtered_x = None
         self.filtered_y = None
         self.filtered_z = None
