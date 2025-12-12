@@ -18,6 +18,7 @@ class UWBReadOnly(Node):
         self.declare_parameter('scale_m', 1.0)
         self.declare_parameter('frame_id', 'map')
         self.declare_parameter('read_crlf', True)
+        self.declare_parameter('use_pos_filter', False)
 
         # Load parameter values
         port = self.get_parameter('port').value
@@ -25,6 +26,7 @@ class UWBReadOnly(Node):
         self.scale_m = self.get_parameter('scale_m').value
         self.frame_id = self.get_parameter('frame_id').value
         self.read_crlf = self.get_parameter('read_crlf').value
+        self.use_pos_filter = self.get_parameter('use_pos_filter').value
 
         # Publishers
         qos = QoSProfile(
@@ -48,7 +50,7 @@ class UWBReadOnly(Node):
 
         self.buf = bytearray()
 
-        # Position low-pass filter to smooth UWB noise
+        # Position low-pass filter to smooth UWB noise (optional)
         self.pos_alpha = 0.20  # Filter strength (0..1): higher = faster response, less smoothing
         self.filtered_x = None
         self.filtered_y = None
@@ -105,21 +107,26 @@ class UWBReadOnly(Node):
             except Exception:
                 return
 
-            # Apply low-pass filter to smooth position
-            if self.filtered_x is None:
-                self.filtered_x = x
-                self.filtered_y = y
-                self.filtered_z = z
+            # Apply optional low-pass filter to smooth position
+            if self.use_pos_filter:
+                if self.filtered_x is None:
+                    self.filtered_x = x
+                    self.filtered_y = y
+                    self.filtered_z = z
+                else:
+                    self.filtered_x = (1.0 - self.pos_alpha) * self.filtered_x + self.pos_alpha * x
+                    self.filtered_y = (1.0 - self.pos_alpha) * self.filtered_y + self.pos_alpha * y
+                    self.filtered_z = (1.0 - self.pos_alpha) * self.filtered_z + self.pos_alpha * z
+                px, py, pz = self.filtered_x, self.filtered_y, self.filtered_z
             else:
-                self.filtered_x = (1.0 - self.pos_alpha) * self.filtered_x + self.pos_alpha * x
-                self.filtered_y = (1.0 - self.pos_alpha) * self.filtered_y + self.pos_alpha * y
-                self.filtered_z = (1.0 - self.pos_alpha) * self.filtered_z + self.pos_alpha * z
+                # publish raw UWB position by default
+                px, py, pz = x, y, z
 
             msg = PoseStamped()
             msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = self.frame_id
-            msg.pose.position.x = self.filtered_x
-            msg.pose.position.y = self.filtered_y
+            msg.pose.position.x = px
+            msg.pose.position.y = py
             msg.pose.position.z = 0.0
             msg.pose.orientation.w = 1.0
             self.pub_pose.publish(msg)
