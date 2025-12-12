@@ -33,10 +33,6 @@ def generate_launch_description():
         'uwb_baud',
         default_value='115200'
     )
-    use_pos_filter_arg = DeclareLaunchArgument(
-        'use_pos_filter',
-        default_value='True'
-    )
 
 
     # ----- Lidar driver (your Terminal A) -----
@@ -71,7 +67,6 @@ def generate_launch_description():
             'baud': LaunchConfiguration('uwb_baud'),
             'frame_id': 'odom',   # UWB publishes in odom frame
             'rviz': 'false',
-            'use_pos_filter': LaunchConfiguration('use_pos_filter'),
         }.items()
     )
 
@@ -95,10 +90,8 @@ def generate_launch_description():
         lidar_baud_arg,
         uwb_port_arg,
         uwb_baud_arg,
-        use_pos_filter_arg,
         lidar_launch,
         uwb_launch,
         uwb_publisher_node,
         imu_publisher_node,
     ])
-

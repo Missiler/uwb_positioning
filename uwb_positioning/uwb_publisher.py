@@ -24,7 +24,6 @@ class UwbOdomBroadcaster(Node):
         # For simple velocity estimation
         self._prev_pos = None
         self._prev_time = None
-        self._prev_yaw = None
 
         # Subscribers
         self.create_subscription(PoseStamped, '/uwb/pose', self.pose_callback, 10)
@@ -55,9 +54,7 @@ class UwbOdomBroadcaster(Node):
         # Build transform
         t = TransformStamped()
         t.header.stamp = now_msg
-        # Prefer using the incoming pose header frame if present (e.g. 'map'/'odom'), otherwise use node param
-        parent_frame = self.latest_pose.header.frame_id if getattr(self.latest_pose, 'header', None) and self.latest_pose.header.frame_id else self.odom_frame
-        t.header.frame_id = parent_frame
+        t.header.frame_id = self.odom_frame
         t.child_frame_id = self.base_frame
 
         # Position from UWB pose
@@ -84,7 +81,7 @@ class UwbOdomBroadcaster(Node):
         # This de-rotates the scan to world frame despite car turning
         t_laser = TransformStamped()
         t_laser.header.stamp = now_msg
-        t_laser.header.frame_id = parent_frame
+        t_laser.header.frame_id = self.odom_frame
         t_laser.child_frame_id = "laser"
         t_laser.transform.translation.x = px
         t_laser.transform.translation.y = py
@@ -119,7 +116,7 @@ class UwbOdomBroadcaster(Node):
         # Publish nav_msgs/Odometry
         odom = Odometry()
         odom.header.stamp = now_msg
-        odom.header.frame_id = parent_frame
+        odom.header.frame_id = self.odom_frame
         odom.child_frame_id = self.base_frame
 
         # Pose
@@ -131,7 +128,7 @@ class UwbOdomBroadcaster(Node):
         else:
             odom.pose.pose.orientation.w = 1.0
 
-        # Estimate linear velocity via finite difference (world frame)
+        # Estimate linear velocity via finite difference
         vx = vy = vz = 0.0
         t_now = now.nanoseconds * 1e-9
         if self._prev_pos is not None and self._prev_time is not None:
@@ -141,52 +138,9 @@ class UwbOdomBroadcaster(Node):
                 vy = (py - self._prev_pos[1]) / dt
                 vz = (pz - self._prev_pos[2]) / dt
 
-        # Convert linear velocity to base_link frame using IMU yaw (if available)
-        if self.latest_imu is not None:
-            q = self.latest_imu.orientation
-            qx, qy, qz, qw = q.x, q.y, q.z, q.w
-            # Compute yaw from quaternion
-            siny_cosp = 2.0 * (qw * qz + qx * qy)
-            cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
-            yaw = math.atan2(siny_cosp, cosy_cosp)
-
-            # Rotate world-frame linear velocity into body frame
-            vbx = math.cos(yaw) * vx + math.sin(yaw) * vy
-            vby = -math.sin(yaw) * vx + math.cos(yaw) * vy
-            vbz = vz
-            odom.twist.twist.linear.x = vbx
-            odom.twist.twist.linear.y = vby
-            odom.twist.twist.linear.z = vbz
-            # Use IMU angular velocity (z) for yaw rate if present
-            if hasattr(self.latest_imu, 'angular_velocity'):
-                odom.twist.twist.angular.z = self.latest_imu.angular_velocity.z
-            # save yaw for next iteration
-            self._prev_yaw = yaw
-        else:
-            odom.twist.twist.linear.x = vx
-            odom.twist.twist.linear.y = vy
-            odom.twist.twist.linear.z = vz
-            # Fallback: estimate yaw rate from motion direction when IMU not available
-            try:
-                if self._prev_pos is not None and self._prev_time is not None:
-                    # compute instantaneous heading from dx,dy
-                    dx = px - self._prev_pos[0]
-                    dy = py - self._prev_pos[1]
-                    if abs(dx) + abs(dy) > 1e-6:
-                        cur_yaw = math.atan2(dy, dx)
-                        if self._prev_yaw is not None and (t_now - self._prev_time) > 1e-6:
-                            # compute shortest angular difference
-                            diff = cur_yaw - self._prev_yaw
-                            while diff > math.pi:
-                                diff -= 2.0 * math.pi
-                            while diff < -math.pi:
-                                diff += 2.0 * math.pi
-                            odom.twist.twist.angular.z = diff / (t_now - self._prev_time)
-                            self._prev_yaw = cur_yaw
-                        else:
-                            self._prev_yaw = cur_yaw
-            except Exception:
-                pass
+        odom.twist.twist.linear.x = vx
+        odom.twist.twist.linear.y = vy
+        odom.twist.twist.linear.z = vz
 
         # Simple covariances (small defaults). If IMU provides covariance, copy it.
         try:

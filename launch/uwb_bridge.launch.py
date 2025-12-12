@@ -9,7 +9,6 @@ def generate_launch_description():
         DeclareLaunchArgument('baud', default_value='115200'),
         DeclareLaunchArgument('scale_m', default_value='1.0'),
         DeclareLaunchArgument('frame_id', default_value='map'),
-        DeclareLaunchArgument('use_pos_filter', default_value='False'),
 
         Node(
             package='uwb_positioning',
@@ -21,7 +20,6 @@ def generate_launch_description():
                 'scale_m': LaunchConfiguration('scale_m'),
                 'frame_id': LaunchConfiguration('frame_id'),
                 'read_crlf': True,
-                'use_pos_filter': LaunchConfiguration('use_pos_filter'),
             }]
         )
     ])
