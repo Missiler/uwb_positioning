@@ -51,10 +51,13 @@ class UwbOdomBroadcaster(Node):
         now = self.get_clock().now()
         now_msg = now.to_msg()
 
+        # Use the frame of the incoming PoseStamped if available, otherwise fallback to odom_frame
+        parent_frame = self.latest_pose.header.frame_id if self.latest_pose.header.frame_id else self.odom_frame
+
         # Build transform
         t = TransformStamped()
         t.header.stamp = now_msg
-        t.header.frame_id = self.odom_frame
+        t.header.frame_id = parent_frame
         t.child_frame_id = self.base_frame
 
         # Position from UWB pose
@@ -81,7 +84,7 @@ class UwbOdomBroadcaster(Node):
         # This de-rotates the scan to world frame despite car turning
         t_laser = TransformStamped()
         t_laser.header.stamp = now_msg
-        t_laser.header.frame_id = self.odom_frame
+        t_laser.header.frame_id = parent_frame
         t_laser.child_frame_id = "laser"
         t_laser.transform.translation.x = px
         t_laser.transform.translation.y = py
@@ -116,7 +119,7 @@ class UwbOdomBroadcaster(Node):
         # Publish nav_msgs/Odometry
         odom = Odometry()
         odom.header.stamp = now_msg
-        odom.header.frame_id = self.odom_frame
+        odom.header.frame_id = parent_frame
         odom.child_frame_id = self.base_frame
 
         # Pose
