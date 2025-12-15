@@ -37,10 +37,6 @@ def generate_launch_description():
         'static_laser_in_world',
         default_value='True'
     )
-    parent_frame_arg = DeclareLaunchArgument(
-        'parent_frame',
-        default_value='map'
-    )
 
 
     # ----- Lidar driver (your Terminal A) -----
@@ -91,8 +87,7 @@ def generate_launch_description():
         name='uwb_publisher',
         output='screen',
         parameters=[{
-            'static_laser_in_world': LaunchConfiguration('static_laser_in_world'),
-            'parent_frame': LaunchConfiguration('parent_frame')
+            'static_laser_in_world': LaunchConfiguration('static_laser_in_world')
         }]
     )
     
@@ -108,8 +103,6 @@ def generate_launch_description():
         lidar_baud_arg,
         uwb_port_arg,
         uwb_baud_arg,
-        static_laser_arg,
-        parent_frame_arg,
         lidar_launch,
         uwb_launch,
         uwb_publisher_node_with_params,

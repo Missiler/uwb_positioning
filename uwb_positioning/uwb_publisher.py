@@ -1,67 +1,44 @@
-#!/usr/bin/env python3
+import math
 import rclpy
 from rclpy.node import Node
-
 from geometry_msgs.msg import TransformStamped, PoseStamped
 from sensor_msgs.msg import Imu
 from nav_msgs.msg import Odometry
-
 import tf2_ros
-
-
-def quat_inverse(q):
-    """Inverse of a unit quaternion."""
-    x, y, z, w = q
-    n = (x*x + y*y + z*z + w*w)
-    if n < 1e-12:
-        return (0.0, 0.0, 0.0, 1.0)
-    return (-x / n, -y / n, -z / n,  w / n)
 
 
 class UwbOdomBroadcaster(Node):
     def __init__(self):
         super().__init__('uwb_odom_broadcaster')
 
-        # Frames
+        # Parameters
         self.declare_parameter('odom_frame', 'odom')
         self.declare_parameter('base_frame', 'base_link')
         self.odom_frame = self.get_parameter('odom_frame').value
         self.base_frame = self.get_parameter('base_frame').value
-
-        # Publishing controls
-        self.declare_parameter('publish_tf', False)  # IMPORTANT: avoid TF fights with UKF if UKF publish_tf:=true
-        self.publish_tf = self.get_parameter('publish_tf').value
-
-        # Laser behavior
-        # If True, publish base_link->laser rotation as inverse IMU, so laser stays world-aligned (virtual frame).
-        self.declare_parameter('static_laser_in_world', False)
+        self.declare_parameter('static_laser_in_world', True)
         self.static_laser_in_world = self.get_parameter('static_laser_in_world').value
 
-        # Laser mounting offset relative to base_link (set to real values if needed)
-        self.declare_parameter('laser_xyz', [0.0, 0.0, 0.0])
-        self.laser_xyz = self.get_parameter('laser_xyz').value
-
         # Latest sensor data
-        self.latest_pose = None  # PoseStamped from UWB
-        self.latest_imu = None   # Imu message
+        self.latest_pose = None        # PoseStamped from UWB
+        self.latest_imu = None         # Imu message
 
-        # Velocity estimation
+        # For simple velocity estimation
         self._prev_pos = None
         self._prev_time = None
 
-        # Subscriptions
+        # Subscribers
         self.create_subscription(PoseStamped, '/uwb/pose', self.pose_callback, 10)
         self.create_subscription(Imu, '/imu/data', self.imu_callback, 10)
 
-        # Publishers / TF
-        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
+        # Publishers and TF
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
 
-        self.create_timer(0.02, self.publish)  # 50 Hz
-        self.get_logger().info(
-            f'UWB->Odometry node started. publish_tf={self.publish_tf}, '
-            f'static_laser_in_world={self.static_laser_in_world}'
-        )
+        # Publish at 50 Hz
+        self.timer = self.create_timer(0.02, self.publish)
+
+        self.get_logger().info('UWB->Odometry broadcaster started')
 
     def pose_callback(self, msg: PoseStamped):
         self.latest_pose = msg
@@ -76,76 +53,79 @@ class UwbOdomBroadcaster(Node):
         now = self.get_clock().now()
         now_msg = now.to_msg()
 
-        # Always publish odometry in odom_frame -> base_link
-        parent_frame = self.odom_frame
+        # Determine parent frame (prefer incoming pose header.frame_id if present)
+        parent_frame = self.latest_pose.header.frame_id if getattr(self.latest_pose, 'header', None) and self.latest_pose.header.frame_id else self.odom_frame
 
+        # Build transform
+        t = TransformStamped()
+        t.header.stamp = now_msg
+        t.header.frame_id = parent_frame
+        t.child_frame_id = self.base_frame
+
+        # Position from UWB pose
         px = self.latest_pose.pose.position.x
         py = self.latest_pose.pose.position.y
         pz = self.latest_pose.pose.position.z
+        t.transform.translation.x = px
+        t.transform.translation.y = py
+        t.transform.translation.z = pz
 
-        # Orientation (IMU preferred)
+        # Orientation from IMU if available, otherwise identity
         if self.latest_imu is not None:
-            q = self.latest_imu.orientation
-            qx, qy, qz, qw = q.x, q.y, q.z, q.w
+            t.transform.rotation = self.latest_imu.orientation
         else:
-            qx, qy, qz, qw = 0.0, 0.0, 0.0, 1.0
+            t.transform.rotation.x = 0.0
+            t.transform.rotation.y = 0.0
+            t.transform.rotation.z = 0.0
+            t.transform.rotation.w = 1.0
 
-        # --- TF: odom -> base_link (ONLY if enabled) ---
-        if self.publish_tf:
-            t = TransformStamped()
-            t.header.stamp = now_msg
-            t.header.frame_id = parent_frame
-            t.child_frame_id = self.base_frame
-            t.transform.translation.x = px
-            t.transform.translation.y = py
-            t.transform.translation.z = pz
-            t.transform.rotation.x = qx
-            t.transform.rotation.y = qy
-            t.transform.rotation.z = qz
-            t.transform.rotation.w = qw
-            self.tf_broadcaster.sendTransform(t)
+        # Broadcast TF for base_link (car body with IMU rotation)
+        self.tf_broadcaster.sendTransform(t)
 
-            # --- TF: base_link -> laser (keeps TF tree valid) ---
-            tl = TransformStamped()
-            tl.header.stamp = now_msg
-            tl.header.frame_id = self.base_frame
-            tl.child_frame_id = "laser"
+        # Build LiDAR transform (mounted on car, but with inverse IMU rotation)
+        # This de-rotates the scan to world frame despite car turning
+        t_laser = TransformStamped()
+        t_laser.header.stamp = now_msg
+        t_laser.header.frame_id = parent_frame
+        t_laser.child_frame_id = "laser"
+        t_laser.transform.translation.x = px
+        t_laser.transform.translation.y = py
+        t_laser.transform.translation.z = pz
 
-            tl.transform.translation.x = float(self.laser_xyz[0])
-            tl.transform.translation.y = float(self.laser_xyz[1])
-            tl.transform.translation.z = float(self.laser_xyz[2])
-
-            if self.static_laser_in_world and self.latest_imu is not None:
-                # Counter-rotate the laser relative to base_link
-                ix, iy, iz, iw = quat_inverse((qx, qy, qz, qw))
-                tl.transform.rotation.x = ix
-                tl.transform.rotation.y = iy
-                tl.transform.rotation.z = iz
-                tl.transform.rotation.w = iw
+        if self.static_laser_in_world:
+            # Keep the laser frame static in the world: identity rotation
+            t_laser.transform.rotation.x = 0.0
+            t_laser.transform.rotation.y = 0.0
+            t_laser.transform.rotation.z = 0.0
+            t_laser.transform.rotation.w = 1.0
+        else:
+            # By default, let laser follow IMU orientation (mounted on robot)
+            if self.latest_imu is not None:
+                t_laser.transform.rotation = self.latest_imu.orientation
             else:
-                # Normal mounted sensor: fixed rotation
-                tl.transform.rotation.x = 0.0
-                tl.transform.rotation.y = 0.0
-                tl.transform.rotation.z = 0.0
-                tl.transform.rotation.w = 1.0
+                t_laser.transform.rotation.x = 0.0
+                t_laser.transform.rotation.y = 0.0
+                t_laser.transform.rotation.z = 0.0
+                t_laser.transform.rotation.w = 1.0
 
-            self.tf_broadcaster.sendTransform(tl)
+        self.tf_broadcaster.sendTransform(t_laser)
 
-        # --- Publish nav_msgs/Odometry ---
+        # Publish nav_msgs/Odometry
         odom = Odometry()
         odom.header.stamp = now_msg
-        odom.header.frame_id = parent_frame          # odom
-        odom.child_frame_id = self.base_frame        # base_link
+        odom.header.frame_id = parent_frame
+        odom.child_frame_id = self.base_frame
 
+        # Pose
         odom.pose.pose.position.x = px
         odom.pose.pose.position.y = py
         odom.pose.pose.position.z = pz
-        odom.pose.pose.orientation.x = qx
-        odom.pose.pose.orientation.y = qy
-        odom.pose.pose.orientation.z = qz
-        odom.pose.pose.orientation.w = qw
+        if self.latest_imu is not None:
+            odom.pose.pose.orientation = self.latest_imu.orientation
+        else:
+            odom.pose.pose.orientation.w = 1.0
 
-        # Finite-difference velocity
+        # Estimate linear velocity via finite difference
         vx = vy = vz = 0.0
         t_now = now.nanoseconds * 1e-9
         if self._prev_pos is not None and self._prev_time is not None:
@@ -159,11 +139,27 @@ class UwbOdomBroadcaster(Node):
         odom.twist.twist.linear.y = vy
         odom.twist.twist.linear.z = vz
 
-        # Save prev
-        self._prev_pos = (px, py, pz)
-        self._prev_time = t_now
+        # Simple covariances (small defaults). If IMU provides covariance, copy it.
+        try:
+            if self.latest_imu is not None:
+                # copy orientation covariance into pose.covariance rotational blocks
+                ocov = self.latest_imu.orientation_covariance
+                # place orientation covariances (xx) at indices 21..26 region (yaw)
+                # nav_msgs/Odometry.pose.covariance is 6x6 row-major
+                odom.pose.covariance[0] = 0.1
+                odom.pose.covariance[7] = 0.1
+                odom.pose.covariance[14] = 0.1
+                odom.pose.covariance[21] = ocov[0] if len(ocov) > 0 else 0.1
+                odom.pose.covariance[28] = ocov[4] if len(ocov) > 4 else 0.1
+                odom.pose.covariance[35] = ocov[8] if len(ocov) > 8 else 0.1
+        except Exception:
+            pass
 
         self.odom_pub.publish(odom)
+
+        # Save previous for velocity estimation
+        self._prev_pos = (px, py, pz)
+        self._prev_time = t_now
 
 
 def main():
