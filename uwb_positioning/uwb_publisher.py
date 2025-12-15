@@ -15,7 +15,8 @@ class UwbOdomBroadcaster(Node):
 
         # ---------------- Parameters ----------------
         # CHANGE: Default 'odom_frame' is now 'map'
-        self.declare_parameter('odom_frame', 'map') 
+        self.declare_parameter('map_frame', 'map')
+        self.map_frame = self.get_parameter('map_frame').value
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('imu_frame', 'imu_link')
 
@@ -80,7 +81,7 @@ class UwbOdomBroadcaster(Node):
         # ==========================================================
         t_base = TransformStamped()
         t_base.header.stamp = now_msg
-        t_base.header.frame_id = self.odom_frame  # This is now 'map'
+        t_base.header.frame_id = self.map_frame  # This is now 'map'
         t_base.child_frame_id = self.base_frame
 
         t_base.transform.translation.x = px
@@ -138,7 +139,7 @@ class UwbOdomBroadcaster(Node):
         # ==========================================================
         odom = Odometry()
         odom.header.stamp = now_msg
-        odom.header.frame_id = self.odom_frame # 'map'
+        odom.header.frame_id = self.map_frame # 'map'
         odom.child_frame_id = self.base_frame
 
         odom.pose.pose.position.x = px

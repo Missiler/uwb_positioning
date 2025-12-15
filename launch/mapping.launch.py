@@ -101,11 +101,9 @@ def generate_launch_description():
         name='scan_derotate',
         output='screen',
         parameters=[{
-            'input_topic': 'scan',
-            'output_topic': 'scan_world',
-            'parent_frame': LaunchConfiguration('parent_frame'),
-            'enable': 'true',
-            'replace_scan': 'true'
+            {'scan_topic': '/scan'},
+            {'target_frame': 'map'},
+            {'cloud_topic': '/scan_map'}
         }]
     )
     
@@ -127,4 +125,5 @@ def generate_launch_description():
         uwb_launch,
         uwb_publisher_node_with_params,
         imu_publisher_node,
+        scan_derotate_node,
     ])
