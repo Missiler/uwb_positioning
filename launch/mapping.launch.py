@@ -5,6 +5,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
+from launch.conditions import IfCondition
 
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -34,6 +35,17 @@ def generate_launch_description():
         'uwb_baud',
         default_value='115200'
     )
+    publish_static_laser_tf_arg = DeclareLaunchArgument(
+        'publish_static_laser_tf',
+        default_value='true'
+    )
+    static_laser_x_arg = DeclareLaunchArgument('static_laser_x', default_value='0.0')
+    static_laser_y_arg = DeclareLaunchArgument('static_laser_y', default_value='0.0')
+    static_laser_z_arg = DeclareLaunchArgument('static_laser_z', default_value='0.0')
+    static_laser_roll_arg = DeclareLaunchArgument('static_laser_roll', default_value='0.0')
+    static_laser_pitch_arg = DeclareLaunchArgument('static_laser_pitch', default_value='0.0')
+    static_laser_yaw_arg = DeclareLaunchArgument('static_laser_yaw', default_value='0.0')
+    laser_frame_arg = DeclareLaunchArgument('laser_frame', default_value='laser')
 
     # ----- Lidar driver (your Terminal A) -----
 
@@ -69,6 +81,23 @@ def generate_launch_description():
         name='imu_publisher',
         output='screen'
     )
+    static_laser_tf = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_laser_tf',
+        output='screen',
+        arguments=[
+            LaunchConfiguration('static_laser_x'),
+            LaunchConfiguration('static_laser_y'),
+            LaunchConfiguration('static_laser_z'),
+            LaunchConfiguration('static_laser_roll'),
+            LaunchConfiguration('static_laser_pitch'),
+            LaunchConfiguration('static_laser_yaw'),
+            LaunchConfiguration('parent_frame') if 'parent_frame' in globals() else LaunchConfiguration('map'),
+            LaunchConfiguration('laser_frame')
+        ],
+        condition=IfCondition(LaunchConfiguration('publish_static_laser_tf'))
+    )
     
     
 
@@ -80,4 +109,5 @@ def generate_launch_description():
         uwb_launch,
         uwb_publisher_node,
         imu_publisher_node,
+        static_laser_tf,
     ])
