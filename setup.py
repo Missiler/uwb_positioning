@@ -29,6 +29,7 @@ setup(
             'uwb_publisher = uwb_positioning.uwb_publisher:main',
             'imu_gather = uwb_positioning.imu_gather_data:main',
             'imu_publish = uwb_positioning.imu_publish_data:main'
+            , 'scan_derotate = uwb_positioning.scan_derotate:main'
         ],
     },
 )

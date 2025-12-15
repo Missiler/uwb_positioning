@@ -95,6 +95,18 @@ def generate_launch_description():
             'parent_frame': LaunchConfiguration('parent_frame')
         }]
     )
+    scan_derotate_node = Node(
+        package='uwb_positioning',
+        executable='scan_derotate',
+        name='scan_derotate',
+        output='screen',
+        parameters=[{
+            'input_topic': 'scan',
+            'output_topic': 'scan_world',
+            'parent_frame': LaunchConfiguration('parent_frame'),
+            'enable': 'true'
+        }]
+    )
     
     imu_publisher_node = Node(
         package='uwb_positioning',
@@ -113,5 +125,6 @@ def generate_launch_description():
         lidar_launch,
         uwb_launch,
         uwb_publisher_node_with_params,
+        scan_derotate_node,
         imu_publisher_node,
     ])
