@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from ament_index_python import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -33,25 +34,29 @@ def generate_launch_description():
         'uwb_baud',
         default_value='115200'
     )
+    
+    
+    namespace = LaunchConfiguration('namespace')
+
+    # Declares an action to allow users to pass the robot namespace from the
+    # CLI into the launch description as an argument.
+    namespace_argument = DeclareLaunchArgument(
+        'namespace',
+        default_value='',
+        description='Robot namespace')
 
 
     # ----- Lidar driver (your Terminal A) -----
-    lidar_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            PathJoinSubstitution([
-                FindPackageShare('sllidar_ros2'),
-                'launch',
-                'sllidar_a1_launch.py'
-            ])
-        ),
-        launch_arguments={
-            'serial_port': LaunchConfiguration('lidar_port'),
-            'serial_baudrate': LaunchConfiguration('lidar_baud'),
-            'frame_id': 'laser',
-            'scan_mode': 'Standard',
-            'publish_tf': 'false'
-        }.items()
+    rplidar_node = Node(
+        package='rplidar_ros',
+        executable='rplidar_composition',
+        output='screen',
+        parameters=[
+            get_package_share_directory("uwb_positioning") + '/config/rplidar_node.yaml'
+            ],
+        namespace=namespace
     )
+
 
     # ----- UWB bridge (your Terminal B) -----
     uwb_launch = IncludeLaunchDescription(
@@ -84,13 +89,28 @@ def generate_launch_description():
         name='imu_publisher',
         output='screen'
     )
+    
+    static_transform_node = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        arguments=['-0.012', '0', '0.144', '0', '0', '0', 'base_footprint', 'laser'],
+
+        # Remaps topics used by the 'tf2_ros' package from absolute (with slash) to relative (no slash).
+        # This is necessary to use namespaces with 'tf2_ros'.
+        remappings=[
+            ('/tf_static', 'tf_static'),
+            ('/tf', 'tf')],
+        namespace=namespace
+    )
+    
+    
 
     return LaunchDescription([
         lidar_port_arg,
         lidar_baud_arg,
         uwb_port_arg,
         uwb_baud_arg,
-        lidar_launch,
+        rplidar_node,
         uwb_launch,
         uwb_publisher_node,
         imu_publisher_node,
