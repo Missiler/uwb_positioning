@@ -14,9 +14,7 @@ class UwbOdomBroadcaster(Node):
         super().__init__('uwb_odom_broadcaster')
 
         # ---------------- Parameters ----------------
-        # CHANGE: Default 'odom_frame' is now 'map'
         self.declare_parameter('map_frame', 'map')
-        self.map_frame = self.get_parameter('map_frame').value
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('imu_frame', 'imu_link')
 
@@ -27,7 +25,7 @@ class UwbOdomBroadcaster(Node):
         self.declare_parameter('laser_z', 0.0)
         self.declare_parameter('laser_yaw', 0.0)
 
-        self.odom_frame = self.get_parameter('odom_frame').value
+        self.map_frame = self.get_parameter('map_frame').value
         self.base_frame = self.get_parameter('base_frame').value
         self.imu_frame = self.get_parameter('imu_frame').value
 
@@ -39,7 +37,7 @@ class UwbOdomBroadcaster(Node):
         self.laser_yaw = float(self.get_parameter('laser_yaw').value)
 
         # ---------------- State ----------------
-        self.latest_pose = None   # PoseStamped from UWB (WORLD position)
+        self.latest_pose = None   # PoseStamped from UWB (world position)
         self.latest_imu = None    # Imu (orientation)
 
         self.prev_pos = None
@@ -54,7 +52,9 @@ class UwbOdomBroadcaster(Node):
 
         self.timer = self.create_timer(0.02, self.publish)  # 50 Hz
 
-        self.get_logger().info(f'UWB broadcaster started with Fixed Frame: {self.odom_frame}')
+        self.get_logger().info(
+            f'UWB broadcaster started. map_frame="{self.map_frame}", base_frame="{self.base_frame}"'
+        )
 
     # ---------------- Callbacks ----------------
     def pose_cb(self, msg: PoseStamped):
@@ -81,14 +81,13 @@ class UwbOdomBroadcaster(Node):
         # ==========================================================
         t_base = TransformStamped()
         t_base.header.stamp = now_msg
-        t_base.header.frame_id = self.map_frame  # This is now 'map'
+        t_base.header.frame_id = self.map_frame
         t_base.child_frame_id = self.base_frame
 
         t_base.transform.translation.x = px
         t_base.transform.translation.y = py
         t_base.transform.translation.z = pz
 
-        # Apply IMU orientation to the CAR
         if self.latest_imu is not None:
             t_base.transform.rotation = self.latest_imu.orientation
         else:
@@ -106,11 +105,8 @@ class UwbOdomBroadcaster(Node):
         t_imu.transform.translation.x = 0.0
         t_imu.transform.translation.y = 0.0
         t_imu.transform.translation.z = 0.0
-        t_imu.transform.rotation.x = 0.0
-        t_imu.transform.rotation.y = 0.0
-        t_imu.transform.rotation.z = 0.0
         t_imu.transform.rotation.w = 1.0
-        
+
         self.tf_broadcaster.sendTransform(t_imu)
 
         # ==========================================================
@@ -121,31 +117,30 @@ class UwbOdomBroadcaster(Node):
             t_laser.header.stamp = now_msg
             t_laser.header.frame_id = self.base_frame
             t_laser.child_frame_id = self.laser_frame
+
             t_laser.transform.translation.x = self.laser_x
             t_laser.transform.translation.y = self.laser_y
             t_laser.transform.translation.z = self.laser_z
 
             sy = math.sin(self.laser_yaw * 0.5)
             cy = math.cos(self.laser_yaw * 0.5)
-            t_laser.transform.rotation.x = 0.0
-            t_laser.transform.rotation.y = 0.0
             t_laser.transform.rotation.z = sy
             t_laser.transform.rotation.w = cy
 
             self.tf_broadcaster.sendTransform(t_laser)
 
         # ==========================================================
-        # Odometry Message
+        # Odometry message (map -> base_link)
         # ==========================================================
         odom = Odometry()
         odom.header.stamp = now_msg
-        odom.header.frame_id = self.map_frame # 'map'
+        odom.header.frame_id = self.map_frame
         odom.child_frame_id = self.base_frame
 
         odom.pose.pose.position.x = px
         odom.pose.pose.position.y = py
         odom.pose.pose.position.z = pz
-        
+
         if self.latest_imu is not None:
             odom.pose.pose.orientation = self.latest_imu.orientation
         else:
@@ -164,10 +159,7 @@ class UwbOdomBroadcaster(Node):
         odom.twist.twist.linear.z = vz
 
         if self.latest_imu is not None:
-            try:
-                odom.twist.twist.angular.z = self.latest_imu.angular_velocity.z
-            except Exception:
-                odom.twist.twist.angular.z = 0.0
+            odom.twist.twist.angular.z = self.latest_imu.angular_velocity.z
 
         self.odom_pub.publish(odom)
 
