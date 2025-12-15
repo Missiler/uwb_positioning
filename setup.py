@@ -16,7 +16,7 @@ setup(
             'launch/static_laser.launch.py'
         ]),
         ('share/' + package_name + '/config', [
-            'rplidar_node.yaml',
+            'config/rplidar_node.yaml',
         ]),
     ],
     install_requires=['setuptools', 'pyserial'],
