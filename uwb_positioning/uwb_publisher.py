@@ -38,7 +38,7 @@ class UwbOdomBroadcaster(Node):
 
         # ---------------- State ----------------
         self.latest_pose = None   # PoseStamped from UWB (WORLD position)
-        self.latest_imu = None    # Imu (orientation only)
+        self.latest_imu = None    # Imu (orientation)
 
         self.prev_pos = None
         self.prev_time = None
@@ -52,7 +52,7 @@ class UwbOdomBroadcaster(Node):
 
         self.timer = self.create_timer(0.02, self.publish)  # 50 Hz
 
-        self.get_logger().info('UWB odom broadcaster (FIXED, decoupled rotation) started')
+        self.get_logger().info('UWB odom broadcaster (FIXED: Rotation enabled on base_link) started')
 
     # ---------------- Callbacks ----------------
     def pose_cb(self, msg: PoseStamped):
@@ -64,6 +64,7 @@ class UwbOdomBroadcaster(Node):
     # ---------------- Main Loop ----------------
     def publish(self):
         if self.latest_pose is None:
+            # We need at least one UWB pose to start the tree
             return
 
         now = self.get_clock().now()
@@ -75,8 +76,9 @@ class UwbOdomBroadcaster(Node):
         pz = self.latest_pose.pose.position.z
 
         # ==========================================================
-        # TF 1: odom -> base_link  (TRANSLATION ONLY, NO ROTATION)
+        # TF 1: odom -> base_link  (POSITION + ROTATION)
         # ==========================================================
+        # This transform tells the system where the car is AND which way it is facing.
         t_base = TransformStamped()
         t_base.header.stamp = now_msg
         t_base.header.frame_id = self.odom_frame
@@ -86,31 +88,39 @@ class UwbOdomBroadcaster(Node):
         t_base.transform.translation.y = py
         t_base.transform.translation.z = pz
 
-        # IMPORTANT: NO ROTATION HERE
-        t_base.transform.rotation.x = 0.0
-        t_base.transform.rotation.y = 0.0
-        t_base.transform.rotation.z = 0.0
-        t_base.transform.rotation.w = 1.0
+        # Apply IMU orientation to the CAR (base_link), not the sensor link
+        if self.latest_imu is not None:
+            t_base.transform.rotation = self.latest_imu.orientation
+        else:
+            t_base.transform.rotation.w = 1.0
 
         self.tf_broadcaster.sendTransform(t_base)
 
         # ==========================================================
-        # TF 2: base_link -> imu_link  (ROTATION ONLY)
+        # TF 2: base_link -> imu_link  (STATIC OFFSET)
         # ==========================================================
-        if self.latest_imu is not None:
-            t_imu = TransformStamped()
-            t_imu.header.stamp = now_msg
-            t_imu.header.frame_id = self.base_frame
-            t_imu.child_frame_id = self.imu_frame
-            t_imu.transform.translation.x = 0.0
-            t_imu.transform.translation.y = 0.0
-            t_imu.transform.translation.z = 0.0
-            t_imu.transform.rotation = self.latest_imu.orientation
-            self.tf_broadcaster.sendTransform(t_imu)
+        # The IMU is bolted to the car. It does not rotate *relative* to the car.
+        # We publish a static identity transform here (or with small offsets if you have them).
+        t_imu = TransformStamped()
+        t_imu.header.stamp = now_msg
+        t_imu.header.frame_id = self.base_frame
+        t_imu.child_frame_id = self.imu_frame
+        t_imu.transform.translation.x = 0.0
+        t_imu.transform.translation.y = 0.0
+        t_imu.transform.translation.z = 0.0
+        # Identity rotation (0,0,0,1) because imu_link is aligned with base_link
+        t_imu.transform.rotation.x = 0.0
+        t_imu.transform.rotation.y = 0.0
+        t_imu.transform.rotation.z = 0.0
+        t_imu.transform.rotation.w = 1.0
+        
+        self.tf_broadcaster.sendTransform(t_imu)
 
         # ==========================================================
         # TF 3: base_link -> laser (STATIC)
         # ==========================================================
+        # This attaches the LiDAR to the car. Since the car (base_link) now rotates
+        # in the world, the LiDAR frame will rotate with it automatically.
         if self.publish_laser_tf:
             t_laser = TransformStamped()
             t_laser.header.stamp = now_msg
@@ -130,7 +140,7 @@ class UwbOdomBroadcaster(Node):
             self.tf_broadcaster.sendTransform(t_laser)
 
         # ==========================================================
-        # nav_msgs/Odometry (POSITION + VELOCITY ONLY)
+        # nav_msgs/Odometry (POSITION + ORIENTATION + VELOCITY)
         # ==========================================================
         odom = Odometry()
         odom.header.stamp = now_msg
@@ -140,7 +150,12 @@ class UwbOdomBroadcaster(Node):
         odom.pose.pose.position.x = px
         odom.pose.pose.position.y = py
         odom.pose.pose.position.z = pz
-        odom.pose.pose.orientation.w = 1.0  # NO orientation here
+        
+        # Include orientation in the Odometry message as well
+        if self.latest_imu is not None:
+            odom.pose.pose.orientation = self.latest_imu.orientation
+        else:
+            odom.pose.pose.orientation.w = 1.0
 
         # Velocity estimation
         vx = vy = vz = 0.0
