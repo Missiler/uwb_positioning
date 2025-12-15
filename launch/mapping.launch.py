@@ -33,14 +33,6 @@ def generate_launch_description():
         'uwb_baud',
         default_value='115200'
     )
-    static_laser_arg = DeclareLaunchArgument(
-        'static_laser_in_world',
-        default_value='True'
-    )
-    parent_frame_arg = DeclareLaunchArgument(
-        'parent_frame',
-        default_value='map'
-    )
 
 
     # ----- Lidar driver (your Terminal A) -----
@@ -85,28 +77,7 @@ def generate_launch_description():
         name='uwb_publisher',
         output='screen'
     )
-    uwb_publisher_node_with_params = Node(
-        package='uwb_positioning',
-        executable='uwb_publisher',
-        name='uwb_publisher',
-        output='screen',
-        parameters=[{
-            'static_laser_in_world': LaunchConfiguration('static_laser_in_world'),
-            'parent_frame': LaunchConfiguration('parent_frame')
-        }]
-    )
-    scan_derotate_node = Node(
-        package='uwb_positioning',
-        executable='scan_derotate',
-        name='scan_derotate',
-        output='screen',
-        parameters=[{
-            'scan_topic': '/scan',
-            'target_frame': 'map',
-            'cloud_topic': '/scan_map'
-        }]
-    )
-
+    
     imu_publisher_node = Node(
         package='uwb_positioning',
         executable='imu_publish',
@@ -119,11 +90,8 @@ def generate_launch_description():
         lidar_baud_arg,
         uwb_port_arg,
         uwb_baud_arg,
-        static_laser_arg,
-        parent_frame_arg,
         lidar_launch,
         uwb_launch,
-        uwb_publisher_node_with_params,
+        uwb_publisher_node,
         imu_publisher_node,
-        scan_derotate_node,
     ])
