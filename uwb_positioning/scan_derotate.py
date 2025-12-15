@@ -13,7 +13,7 @@ class ScanDeRotate(Node):
         self.declare_parameter('input_topic', 'scan')
         self.declare_parameter('output_topic', 'scan_world')
         self.declare_parameter('parent_frame', 'map')
-        self.declare_parameter('enable', True)
+        self.declare_parameter('enable', False)
 
         self.input_topic = self.get_parameter('input_topic').value
         self.output_topic = self.get_parameter('output_topic').value

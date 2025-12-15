@@ -16,8 +16,19 @@ class UwbOdomBroadcaster(Node):
         self.declare_parameter('base_frame', 'base_link')
         self.odom_frame = self.get_parameter('odom_frame').value
         self.base_frame = self.get_parameter('base_frame').value
-        self.declare_parameter('static_laser_in_world', True)
-        self.static_laser_in_world = self.get_parameter('static_laser_in_world').value
+        # Laser TF configuration (publish base_link -> laser frame)
+        self.declare_parameter('publish_laser_tf', True)
+        self.declare_parameter('laser_frame', 'laser')
+        self.declare_parameter('laser_x', 0.0)
+        self.declare_parameter('laser_y', 0.0)
+        self.declare_parameter('laser_z', 0.0)
+        self.declare_parameter('laser_yaw', 0.0)
+        self.publish_laser_tf = self.get_parameter('publish_laser_tf').value
+        self.laser_frame = self.get_parameter('laser_frame').value
+        self.laser_x = float(self.get_parameter('laser_x').value)
+        self.laser_y = float(self.get_parameter('laser_y').value)
+        self.laser_z = float(self.get_parameter('laser_z').value)
+        self.laser_yaw = float(self.get_parameter('laser_yaw').value)
         # Parent frame for published TFs (use 'map' to keep scans world-fixed)
         self.declare_parameter('parent_frame', 'map')
         self.parent_frame = self.get_parameter('parent_frame').value
@@ -29,6 +40,7 @@ class UwbOdomBroadcaster(Node):
         # For simple velocity estimation
         self._prev_pos = None
         self._prev_time = None
+        self._prev_yaw = None
 
         # Subscribers
         self.create_subscription(PoseStamped, '/uwb/pose', self.pose_callback, 10)
@@ -49,6 +61,10 @@ class UwbOdomBroadcaster(Node):
     def imu_callback(self, msg: Imu):
         self.latest_imu = msg
 
+    def cmd_vel_callback(self, msg):
+        # Store last cmd_vel; this node doesn't actuate motors but we keep it for integration
+        self.latest_cmd = msg
+
     def publish(self):
         if self.latest_pose is None:
             return
@@ -56,13 +72,10 @@ class UwbOdomBroadcaster(Node):
         now = self.get_clock().now()
         now_msg = now.to_msg()
 
-        # Determine parent frame (use configured parent_frame parameter)
-        parent_frame = self.parent_frame if self.parent_frame else self.odom_frame
-
-        # Build transform
+        # Build transform: publish odom->base_link (odom frame should be local odometry)
         t = TransformStamped()
         t.header.stamp = now_msg
-        t.header.frame_id = parent_frame
+        t.header.frame_id = self.odom_frame
         t.child_frame_id = self.base_frame
 
         # Position from UWB pose
@@ -85,38 +98,29 @@ class UwbOdomBroadcaster(Node):
         # Broadcast TF for base_link (car body with IMU rotation)
         self.tf_broadcaster.sendTransform(t)
 
-        # Build LiDAR transform (mounted on car, but with inverse IMU rotation)
-        # This de-rotates the scan to world frame despite car turning
-        t_laser = TransformStamped()
-        t_laser.header.stamp = now_msg
-        t_laser.header.frame_id = parent_frame
-        t_laser.child_frame_id = "laser"
-        t_laser.transform.translation.x = px
-        t_laser.transform.translation.y = py
-        t_laser.transform.translation.z = pz
-
-        if self.static_laser_in_world:
-            # Keep the laser frame static in the world: identity rotation
+        # Publish a fixed transform from base_link -> laser (robot frame)
+        if self.publish_laser_tf:
+            t_laser = TransformStamped()
+            t_laser.header.stamp = now_msg
+            t_laser.header.frame_id = self.base_frame
+            t_laser.child_frame_id = self.laser_frame
+            # translation is relative to base_link
+            t_laser.transform.translation.x = self.laser_x
+            t_laser.transform.translation.y = self.laser_y
+            t_laser.transform.translation.z = self.laser_z
+            # rotation from yaw offset
+            sy = math.sin(self.laser_yaw * 0.5)
+            cy = math.cos(self.laser_yaw * 0.5)
             t_laser.transform.rotation.x = 0.0
             t_laser.transform.rotation.y = 0.0
-            t_laser.transform.rotation.z = 0.0
-            t_laser.transform.rotation.w = 1.0
-        else:
-            # By default, let laser follow IMU orientation (mounted on robot)
-            if self.latest_imu is not None:
-                t_laser.transform.rotation = self.latest_imu.orientation
-            else:
-                t_laser.transform.rotation.x = 0.0
-                t_laser.transform.rotation.y = 0.0
-                t_laser.transform.rotation.z = 0.0
-                t_laser.transform.rotation.w = 1.0
-
-        self.tf_broadcaster.sendTransform(t_laser)
+            t_laser.transform.rotation.z = sy
+            t_laser.transform.rotation.w = cy
+            self.tf_broadcaster.sendTransform(t_laser)
 
         # Publish nav_msgs/Odometry
         odom = Odometry()
         odom.header.stamp = now_msg
-        odom.header.frame_id = parent_frame
+        odom.header.frame_id = self.odom_frame
         odom.child_frame_id = self.base_frame
 
         # Pose
@@ -138,9 +142,47 @@ class UwbOdomBroadcaster(Node):
                 vy = (py - self._prev_pos[1]) / dt
                 vz = (pz - self._prev_pos[2]) / dt
 
-        odom.twist.twist.linear.x = vx
-        odom.twist.twist.linear.y = vy
-        odom.twist.twist.linear.z = vz
+        # Convert linear velocity to base_link frame using IMU yaw (if available)
+        if self.latest_imu is not None:
+            q = self.latest_imu.orientation
+            qx, qy, qz, qw = q.x, q.y, q.z, q.w
+            siny_cosp = 2.0 * (qw * qz + qx * qy)
+            cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+            yaw = math.atan2(siny_cosp, cosy_cosp)
+            vbx = math.cos(yaw) * vx + math.sin(yaw) * vy
+            vby = -math.sin(yaw) * vx + math.cos(yaw) * vy
+            odom.twist.twist.linear.x = vbx
+            odom.twist.twist.linear.y = vby
+            odom.twist.twist.linear.z = vz
+            # Angular velocity from IMU if present
+            try:
+                odom.twist.twist.angular.z = self.latest_imu.angular_velocity.z
+            except Exception:
+                odom.twist.twist.angular.z = 0.0
+            self._prev_yaw = yaw
+        else:
+            odom.twist.twist.linear.x = vx
+            odom.twist.twist.linear.y = vy
+            odom.twist.twist.linear.z = vz
+            # Fallback: estimate yaw rate from motion direction when IMU not available
+            try:
+                if self._prev_pos is not None and self._prev_time is not None:
+                    dx = px - self._prev_pos[0]
+                    dy = py - self._prev_pos[1]
+                    if abs(dx) + abs(dy) > 1e-6:
+                        cur_yaw = math.atan2(dy, dx)
+                        if self._prev_yaw is not None and (t_now - self._prev_time) > 1e-6:
+                            diff = cur_yaw - self._prev_yaw
+                            while diff > math.pi:
+                                diff -= 2.0 * math.pi
+                            while diff < -math.pi:
+                                diff += 2.0 * math.pi
+                            odom.twist.twist.angular.z = diff / (t_now - self._prev_time)
+                            self._prev_yaw = cur_yaw
+                        else:
+                            self._prev_yaw = cur_yaw
+            except Exception:
+                odom.twist.twist.angular.z = 0.0
 
         # Simple covariances (small defaults). If IMU provides covariance, copy it.
         try:
