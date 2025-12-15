@@ -122,7 +122,7 @@ def generate_launch_description():
         uwb_baud_arg,
         static_laser_arg,
         parent_frame_arg,
-        lidar_launch,
+        #lidar_launch,
         uwb_launch,
         uwb_publisher_node_with_params,
         imu_publisher_node,
