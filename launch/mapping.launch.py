@@ -125,6 +125,5 @@ def generate_launch_description():
         lidar_launch,
         uwb_launch,
         uwb_publisher_node_with_params,
-        scan_derotate_node,
         imu_publisher_node,
     ])
