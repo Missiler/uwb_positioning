@@ -14,7 +14,8 @@ class UwbOdomBroadcaster(Node):
         super().__init__('uwb_odom_broadcaster')
 
         # ---------------- Parameters ----------------
-        self.declare_parameter('odom_frame', 'odom')
+        # CHANGE: Default 'odom_frame' is now 'map'
+        self.declare_parameter('odom_frame', 'map') 
         self.declare_parameter('base_frame', 'base_link')
         self.declare_parameter('imu_frame', 'imu_link')
 
@@ -52,7 +53,7 @@ class UwbOdomBroadcaster(Node):
 
         self.timer = self.create_timer(0.02, self.publish)  # 50 Hz
 
-        self.get_logger().info('UWB odom broadcaster (FIXED: Rotation enabled on base_link) started')
+        self.get_logger().info(f'UWB broadcaster started with Fixed Frame: {self.odom_frame}')
 
     # ---------------- Callbacks ----------------
     def pose_cb(self, msg: PoseStamped):
@@ -64,7 +65,6 @@ class UwbOdomBroadcaster(Node):
     # ---------------- Main Loop ----------------
     def publish(self):
         if self.latest_pose is None:
-            # We need at least one UWB pose to start the tree
             return
 
         now = self.get_clock().now()
@@ -76,19 +76,18 @@ class UwbOdomBroadcaster(Node):
         pz = self.latest_pose.pose.position.z
 
         # ==========================================================
-        # TF 1: odom -> base_link  (POSITION + ROTATION)
+        # TF 1: map -> base_link
         # ==========================================================
-        # This transform tells the system where the car is AND which way it is facing.
         t_base = TransformStamped()
         t_base.header.stamp = now_msg
-        t_base.header.frame_id = self.odom_frame
+        t_base.header.frame_id = self.odom_frame  # This is now 'map'
         t_base.child_frame_id = self.base_frame
 
         t_base.transform.translation.x = px
         t_base.transform.translation.y = py
         t_base.transform.translation.z = pz
 
-        # Apply IMU orientation to the CAR (base_link), not the sensor link
+        # Apply IMU orientation to the CAR
         if self.latest_imu is not None:
             t_base.transform.rotation = self.latest_imu.orientation
         else:
@@ -97,10 +96,8 @@ class UwbOdomBroadcaster(Node):
         self.tf_broadcaster.sendTransform(t_base)
 
         # ==========================================================
-        # TF 2: base_link -> imu_link  (STATIC OFFSET)
+        # TF 2: base_link -> imu_link (STATIC)
         # ==========================================================
-        # The IMU is bolted to the car. It does not rotate *relative* to the car.
-        # We publish a static identity transform here (or with small offsets if you have them).
         t_imu = TransformStamped()
         t_imu.header.stamp = now_msg
         t_imu.header.frame_id = self.base_frame
@@ -108,7 +105,6 @@ class UwbOdomBroadcaster(Node):
         t_imu.transform.translation.x = 0.0
         t_imu.transform.translation.y = 0.0
         t_imu.transform.translation.z = 0.0
-        # Identity rotation (0,0,0,1) because imu_link is aligned with base_link
         t_imu.transform.rotation.x = 0.0
         t_imu.transform.rotation.y = 0.0
         t_imu.transform.rotation.z = 0.0
@@ -119,8 +115,6 @@ class UwbOdomBroadcaster(Node):
         # ==========================================================
         # TF 3: base_link -> laser (STATIC)
         # ==========================================================
-        # This attaches the LiDAR to the car. Since the car (base_link) now rotates
-        # in the world, the LiDAR frame will rotate with it automatically.
         if self.publish_laser_tf:
             t_laser = TransformStamped()
             t_laser.header.stamp = now_msg
@@ -140,24 +134,22 @@ class UwbOdomBroadcaster(Node):
             self.tf_broadcaster.sendTransform(t_laser)
 
         # ==========================================================
-        # nav_msgs/Odometry (POSITION + ORIENTATION + VELOCITY)
+        # Odometry Message
         # ==========================================================
         odom = Odometry()
         odom.header.stamp = now_msg
-        odom.header.frame_id = self.odom_frame
+        odom.header.frame_id = self.odom_frame # 'map'
         odom.child_frame_id = self.base_frame
 
         odom.pose.pose.position.x = px
         odom.pose.pose.position.y = py
         odom.pose.pose.position.z = pz
         
-        # Include orientation in the Odometry message as well
         if self.latest_imu is not None:
             odom.pose.pose.orientation = self.latest_imu.orientation
         else:
             odom.pose.pose.orientation.w = 1.0
 
-        # Velocity estimation
         vx = vy = vz = 0.0
         if self.prev_pos is not None and self.prev_time is not None:
             dt = t_now - self.prev_time
