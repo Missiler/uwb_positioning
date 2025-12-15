@@ -13,12 +13,14 @@ class ScanDeRotate(Node):
         self.declare_parameter('input_topic', 'scan')
         self.declare_parameter('output_topic', 'scan_world')
         self.declare_parameter('parent_frame', 'map')
-        self.declare_parameter('enable', False)
+        self.declare_parameter('enable', True)
+        self.declare_parameter('replace_scan', True)
 
         self.input_topic = self.get_parameter('input_topic').value
         self.output_topic = self.get_parameter('output_topic').value
         self.parent_frame = self.get_parameter('parent_frame').value
         self.enabled = self.get_parameter('enable').value
+        self.replace_scan = self.get_parameter('replace_scan').value
 
         # IMU state
         self.latest_yaw = 0.0
@@ -27,7 +29,9 @@ class ScanDeRotate(Node):
         # Subscribers / publishers
         self.create_subscription(Imu, '/imu/data', self.imu_cb, 50)
         self.create_subscription(LaserScan, self.input_topic, self.scan_cb, 10)
-        self.scan_pub = self.create_publisher(LaserScan, self.output_topic, 10)
+        # If replace_scan is True, publish derotated scans on the original topic
+        out_topic = self.input_topic if self.replace_scan else self.output_topic
+        self.scan_pub = self.create_publisher(LaserScan, out_topic, 10)
 
         self.get_logger().info(
             f"Scan derotate node started (in: {self.input_topic}, out: {self.output_topic}, parent: {self.parent_frame})"

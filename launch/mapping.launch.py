@@ -104,7 +104,8 @@ def generate_launch_description():
             'input_topic': 'scan',
             'output_topic': 'scan_world',
             'parent_frame': LaunchConfiguration('parent_frame'),
-            'enable': 'false'
+            'enable': 'true',
+            'replace_scan': 'true'
         }]
     )
     
