@@ -101,12 +101,12 @@ def generate_launch_description():
         name='scan_derotate',
         output='screen',
         parameters=[{
-            {'scan_topic': '/scan'},
-            {'target_frame': 'map'},
-            {'cloud_topic': '/scan_map'}
+            'scan_topic': '/scan',
+            'target_frame': 'map',
+            'cloud_topic': '/scan_map'
         }]
     )
-    
+
     imu_publisher_node = Node(
         package='uwb_positioning',
         executable='imu_publish',
