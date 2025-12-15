@@ -33,6 +33,10 @@ def generate_launch_description():
         'uwb_baud',
         default_value='115200'
     )
+    static_laser_arg = DeclareLaunchArgument(
+        'static_laser_in_world',
+        default_value='True'
+    )
 
 
     # ----- Lidar driver (your Terminal A) -----
@@ -77,6 +81,15 @@ def generate_launch_description():
         name='uwb_publisher',
         output='screen'
     )
+    uwb_publisher_node_with_params = Node(
+        package='uwb_positioning',
+        executable='uwb_publisher',
+        name='uwb_publisher',
+        output='screen',
+        parameters=[{
+            'static_laser_in_world': LaunchConfiguration('static_laser_in_world')
+        }]
+    )
     
     imu_publisher_node = Node(
         package='uwb_positioning',
@@ -92,6 +105,6 @@ def generate_launch_description():
         uwb_baud_arg,
         lidar_launch,
         uwb_launch,
-        uwb_publisher_node,
+        uwb_publisher_node_with_params,
         imu_publisher_node,
     ])
