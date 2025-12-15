@@ -18,6 +18,9 @@ class UwbOdomBroadcaster(Node):
         self.base_frame = self.get_parameter('base_frame').value
         self.declare_parameter('static_laser_in_world', True)
         self.static_laser_in_world = self.get_parameter('static_laser_in_world').value
+        # Parent frame for published TFs (use 'map' to keep scans world-fixed)
+        self.declare_parameter('parent_frame', 'map')
+        self.parent_frame = self.get_parameter('parent_frame').value
 
         # Latest sensor data
         self.latest_pose = None        # PoseStamped from UWB
@@ -53,8 +56,8 @@ class UwbOdomBroadcaster(Node):
         now = self.get_clock().now()
         now_msg = now.to_msg()
 
-        # Determine parent frame (prefer incoming pose header.frame_id if present)
-        parent_frame = self.latest_pose.header.frame_id if getattr(self.latest_pose, 'header', None) and self.latest_pose.header.frame_id else self.odom_frame
+        # Determine parent frame (use configured parent_frame parameter)
+        parent_frame = self.parent_frame if self.parent_frame else self.odom_frame
 
         # Build transform
         t = TransformStamped()
