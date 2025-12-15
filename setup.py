@@ -12,8 +12,10 @@ setup(
         ('share/' + package_name + '/launch', [
             'launch/uwb_bridge.launch.py',
             'launch/mapping.launch.py',
+            'launch/lidar.launch.py'
         ]),
         ('share/' + package_name + '/config', [
+            'rplidar_node.yaml',
         ]),
     ],
     install_requires=['setuptools', 'pyserial'],
